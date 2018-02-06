@@ -1,6 +1,7 @@
 
-const REX:      u8 = 0b01001000;
-const MODREGRM: u8 = 0b11000000;
+const REX:       u8 = 0b01000000;
+const LONG_MODE: u8 = 1 << 3;
+const MODREGRM:  u8 = 0b11000000;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
@@ -23,40 +24,91 @@ pub enum Reg {
    R15, // 1.111
 }
 
-#[repr(u8)]
-#[derive(Debug, Clone, Copy)]
-pub enum Opcode {
-    Add = 0x01,
-    Sub = 0x29,
-    Mov = 0x89,
-    Ret = 0xc3,
+impl Reg {
+    pub fn domain(&self) -> u8 { *self as u8 / 8 }
+    pub fn offset(&self) -> u8 { *self as u8 % 8 }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Operand(Option<Reg>);
-
-impl Operand {
-    pub fn reg(r: Reg) -> Self { Operand(Some(r)) }
-    pub fn domain(&self) -> u8 { if let Some(o) = self.0 { o as u8 / 8 } else { 0 } }
-    pub fn offset(&self) -> u8 { if let Some(o) = self.0 { o as u8 % 8 } else { 0 } }
+pub enum Operand {
+    Reg(Reg),
+    Mem,
 }
 
 pub enum Instruction {
-    Nullary(Opcode),
-    Unary(Opcode, Operand),
-    Binary(Opcode, Operand, Operand),
+    Add(Operand, Operand),
+    Sub(Operand, Operand),
+    Mul(Operand, Operand),
+    Mov(Operand, Operand),
+    Push(Operand),
+    Pop(Operand),
+    Ret,
 }
 
 impl Instruction {
     pub fn serialize(&self, buf: &mut Vec<u8>) {
+        use self::Instruction::*;
+        use self::Operand::*;
         match *self {
-            Instruction::Nullary(opcode) => {
-                buf.push(opcode as u8);
+            Ret => buf.push(0xc3),
+            Add(op1, op2) => {
+                match (op1, op2) {
+                    (Reg(r1), Reg(r2)) => {
+                        buf.push(REX | LONG_MODE | r2.domain() << 2 | r1.domain());
+                        buf.push(0x01);
+                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                    }
+                    _ => unimplemented!(),
+                }
             }
-            Instruction::Binary(opcode, op1, op2) => {
-                buf.push(REX | op1.domain() << 2 | op2.domain());
-                buf.push(opcode as u8);
-                buf.push(MODREGRM | op2.offset() << 3 | op1.offset());
+            Sub(op1, op2) => {
+                match (op1, op2) {
+                    (Reg(r1), Reg(r2)) => {
+                        buf.push(REX | LONG_MODE | r2.domain() << 2 | r1.domain());
+                        buf.push(0x29);
+                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Mul(op1, op2) => {
+                match (op1, op2) {
+                    (Reg(r1), Reg(r2)) => {
+                        buf.push(REX | LONG_MODE | r1.domain() << 2 | r2.domain());
+                        buf.push(0x0f);
+                        buf.push(0xaf);
+                        buf.push(MODREGRM | r1.offset() << 3 | r2.offset());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Mov(op1, op2) => {
+                match (op1, op2) {
+                    (Reg(r1), Reg(r2)) => {
+                        buf.push(REX | r2.domain() << 2 | r1.domain());
+                        buf.push(0x89);
+                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Push(op1) => {
+                match op1 {
+                    Reg(r1) => {
+                        if r1.domain() == 1 { buf.push(REX | 1); }
+                        buf.push(0x50 | r1.offset());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Pop(op1) => {
+                match op1 {
+                    Reg(r1) => {
+                        if r1.domain() == 1 { buf.push(REX | 1); }
+                        buf.push(0x58 | r1.offset());
+                    }
+                    _ => unimplemented!(),
+                }
             }
             _ => unimplemented!(),
         }

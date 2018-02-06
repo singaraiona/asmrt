@@ -17,7 +17,7 @@ pub struct Assembler {
 impl Assembler {
     pub fn new() -> Self { Assembler { buffer: vec![] } }
 
-    pub fn content_fmt(&self) -> String {
+    pub fn buffer_fmt(&self) -> String {
         format!("[{}]", self.buffer.iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(" "))
     }
 
