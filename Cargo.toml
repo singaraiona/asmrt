@@ -6,6 +6,3 @@ authors = ["Anton <singaraiona@gmail.com>"]
 [dependencies]
 memmap = "^0.5.2"
 
-[[bin]]
-name = "jit"
-path = "apps/jit.rs"

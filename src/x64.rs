@@ -1,4 +1,5 @@
 use memmap::{Mmap, Protection};
+use std::io::Cursor;
 use defs::*;
 use Error;
 
@@ -11,14 +12,14 @@ impl Ops {
 }
 
 pub struct Assembler {
-    buffer: Vec<u8>,
+    buffer: Cursor<Vec<u8>>,
 }
 
 impl Assembler {
-    pub fn new() -> Self { Assembler { buffer: vec![] } }
+    pub fn new() -> Self { Assembler { buffer: Cursor::new(vec![]) } }
 
     pub fn buffer_fmt(&self) -> String {
-        format!("[{}]", self.buffer.iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(" "))
+        format!("[{}]", self.buffer.get_ref().iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(" "))
     }
 
     pub fn push_instruction(&mut self, i: Instruction) { i.serialize(&mut self.buffer); }
@@ -27,7 +28,7 @@ impl Assembler {
         let mut mm = Mmap::anonymous(MMAP_INIT_SIZE, Protection::ReadWrite).or_else(|_| Err(Error::MmapCreate))?;
         {
             let buf = unsafe { mm.as_mut_slice() };
-            for (i, v) in self.buffer.iter().enumerate() { buf[i] = *v; }
+            for (i, v) in self.buffer.get_ref().iter().enumerate() { buf[i] = *v; }
         }
         mm.set_protection(Protection::ReadExecute).or_else(|_| Err(Error::MmapSetMode))?;
         Ok(Ops(mm))

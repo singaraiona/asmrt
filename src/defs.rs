@@ -1,8 +1,10 @@
-
+use std::io::prelude::*;
+use std::io::Cursor;
+//
 const REX:       u8 = 0b01000000;
 const LONG_MODE: u8 = 1 << 3;
 const MODREGRM:  u8 = 0b11000000;
-
+//
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum Reg {
@@ -46,17 +48,19 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn serialize(&self, buf: &mut Vec<u8>) {
+    pub fn serialize<W: Write + Seek>(&self, writer: &mut W) {
         use self::Instruction::*;
         use self::Operand::*;
         match *self {
-            Ret => buf.push(0xc3),
+            Ret => {
+                writer.write(&[0xc3]);
+            },
             Add(op1, op2) => {
                 match (op1, op2) {
                     (Reg(r1), Reg(r2)) => {
-                        buf.push(REX | LONG_MODE | r2.domain() << 2 | r1.domain());
-                        buf.push(0x01);
-                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                        writer.write(&[REX | LONG_MODE | r2.domain() << 2 | r1.domain(),
+                                     0x01,
+                                     MODREGRM | r2.offset() << 3 | r1.offset()]);
                     }
                     _ => unimplemented!(),
                 }
@@ -64,9 +68,9 @@ impl Instruction {
             Sub(op1, op2) => {
                 match (op1, op2) {
                     (Reg(r1), Reg(r2)) => {
-                        buf.push(REX | LONG_MODE | r2.domain() << 2 | r1.domain());
-                        buf.push(0x29);
-                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                        writer.write(&[REX | LONG_MODE | r2.domain() << 2 | r1.domain(),
+                        0x29,
+                        MODREGRM | r2.offset() << 3 | r1.offset()]);
                     }
                     _ => unimplemented!(),
                 }
@@ -74,10 +78,9 @@ impl Instruction {
             Mul(op1, op2) => {
                 match (op1, op2) {
                     (Reg(r1), Reg(r2)) => {
-                        buf.push(REX | LONG_MODE | r1.domain() << 2 | r2.domain());
-                        buf.push(0x0f);
-                        buf.push(0xaf);
-                        buf.push(MODREGRM | r1.offset() << 3 | r2.offset());
+                        writer.write(&[REX | LONG_MODE | r1.domain() << 2 | r2.domain(),
+                        0x0f, 0xaf,
+                        MODREGRM | r1.offset() << 3 | r2.offset()]);
                     }
                     _ => unimplemented!(),
                 }
@@ -85,9 +88,9 @@ impl Instruction {
             Mov(op1, op2) => {
                 match (op1, op2) {
                     (Reg(r1), Reg(r2)) => {
-                        buf.push(REX | r2.domain() << 2 | r1.domain());
-                        buf.push(0x89);
-                        buf.push(MODREGRM | r2.offset() << 3 | r1.offset());
+                        writer.write(&[REX | r2.domain() << 2 | r1.domain(),
+                        0x89,
+                        MODREGRM | r2.offset() << 3 | r1.offset()]);
                     }
                     _ => unimplemented!(),
                 }
@@ -95,8 +98,8 @@ impl Instruction {
             Push(op1) => {
                 match op1 {
                     Reg(r1) => {
-                        if r1.domain() == 1 { buf.push(REX | 1); }
-                        buf.push(0x50 | r1.offset());
+                        if r1.domain() == 1 { writer.write(&[REX | 1]); }
+                        writer.write(&[0x50 | r1.offset()]);
                     }
                     _ => unimplemented!(),
                 }
@@ -104,8 +107,8 @@ impl Instruction {
             Pop(op1) => {
                 match op1 {
                     Reg(r1) => {
-                        if r1.domain() == 1 { buf.push(REX | 1); }
-                        buf.push(0x58 | r1.offset());
+                        if r1.domain() == 1 { writer.write(&[REX | 1]); }
+                        writer.write(&[0x58 | r1.offset()]);
                     }
                     _ => unimplemented!(),
                 }
