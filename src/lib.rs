@@ -2,6 +2,7 @@
 
 extern crate core;
 extern crate memmap;
+extern crate fnv;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
@@ -9,6 +10,8 @@ pub enum Error {
     MmapSetMode,
     EmptyBuffer,
     InvalidOperation,
+    Serialize,
+    UnknownLabel,
     Nyi
 }
 

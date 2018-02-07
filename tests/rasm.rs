@@ -81,3 +81,15 @@ test!(mul_push_pop;
     2, 3;
     6
 );
+
+test!(jmp_label;
+    Jmp(Label("lbl")),
+    Mov(Ireg(RAX), Iimm(9223372036854775801)),
+    Add(Ireg(RAX), Ireg(RCX)),
+    Ret,
+    SetLabel("lbl"),
+    Mov(Ireg(RAX), Iimm(9));
+    MonadI64;
+    1;
+    9
+);

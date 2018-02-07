@@ -1,30 +1,51 @@
 use memmap::{Mmap, Protection};
 use std::io::Cursor;
+use std::io::prelude::*;
+use std::mem;
 use defs::*;
 use Error;
-
+use fnv::FnvHashMap;
+//
 const MMAP_INIT_SIZE: usize = 1024 * 256;
-
+//
+macro_rules! or          { ($e:expr)                                 => { $e.or_else(|_| Err(Error::Serialize))?   }}
+macro_rules! push_prefix { ($w:expr, $op1:expr, $op2:expr)           => { or!($w.write(&[REX | $op1 << 2 | $op2])) }}
+macro_rules! push_opcode { ($w:expr, $($op:expr),+)                  => { or!($w.write(&[$($op),+]))               }}
+macro_rules! push_modreg { ($w:expr, $md:expr, $op1:expr, $op2:expr) => { or!($w.write(&[$md | $op1 << 3 | $op2])) }}
+macro_rules! push_immi64 { ($w:expr, $im:expr)                       => {
+                            unsafe { or!($w.write(&mem::transmute::<i64, [u8;8]>($im))) }}}
+//
 pub struct Ops(Mmap);
 
 impl Ops {
     pub fn ptr(&self) -> *const u8 { self.0.ptr() }
 }
-
+//
 pub struct Assembler {
-    buffer: Cursor<Vec<u8>>,
+    labels:   FnvHashMap<&'static str, u64>, // lables str to offset in buffer mapping
+    mentions: Vec<(&'static str, u64)>,      // set of labels mentioned inside buffer
+    buffer:   Cursor<Vec<u8>>,               // executable code
 }
 
 impl Assembler {
-    pub fn new() -> Self { Assembler { buffer: Cursor::new(vec![]) } }
+    pub fn new() -> Self {
+        Assembler {
+            labels:   FnvHashMap::with_capacity_and_hasher(16, Default::default()),
+            mentions: vec![],
+            buffer:   Cursor::new(vec![])
+        }
+    }
 
     pub fn buffer_fmt(&self) -> String {
         format!("[{}]", self.buffer.get_ref().iter().map(|b| format!("0x{:02x}", b)).collect::<Vec<_>>().join(" "))
     }
 
-    pub fn push_instruction(&mut self, i: Instruction) { i.serialize(&mut self.buffer); }
+    pub fn push_instruction(&mut self, i: Instruction) -> Result<(), Error> { self.serialize_instruction(i) }
 
     pub fn commit(&mut self) -> Result<Ops, Error> {
+        self.resolve_labels()?;
+        //println!("{}", self.buffer_fmt());
+        //return Err(Error::UnknownLabel);
         let mut mm = Mmap::anonymous(MMAP_INIT_SIZE, Protection::ReadWrite).or_else(|_| Err(Error::MmapCreate))?;
         {
             let buf = unsafe { mm.as_mut_slice() };
@@ -32,6 +53,130 @@ impl Assembler {
         }
         mm.set_protection(Protection::ReadExecute).or_else(|_| Err(Error::MmapSetMode))?;
         Ok(Ops(mm))
+    }
+
+    fn resolve_labels(&mut self) -> Result<(), Error> {
+       for lbl in &self.mentions {
+           let pos = self.labels.get(lbl.0).ok_or_else(|| Error::UnknownLabel)?;
+           self.buffer.set_position(lbl.1);
+           push_opcode!(&mut self.buffer, *pos as u8);
+       }
+       Ok(())
+    }
+
+    fn serialize_instruction(&mut self, instr: Instruction) -> Result<(), Error> {
+        use defs::Instruction::*;
+        use defs::Operand::*;
+        match instr {
+            Ret => {
+                push_opcode!(&mut self.buffer, 0xc3);
+            },
+            Add(op1, op2) => {
+                match (op1, op2) {
+                    (Ireg(r1), Ireg(r2)) => {
+                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        push_opcode!(&mut self.buffer, 0x01);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                    }
+                    // ADDSD
+                    (Freg(r1), Freg(r2)) => {
+                        push_opcode!(&mut self.buffer, 0xf2, 0x0f, 0x58);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Sub(op1, op2) => {
+                match (op1, op2) {
+                    (Ireg(r1), Ireg(r2)) => {
+                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        push_opcode!(&mut self.buffer, 0x29);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Mul(op1, op2) => {
+                match (op1, op2) {
+                    (Ireg(r1), Ireg(r2)) => {
+                        push_prefix!(&mut self.buffer, r1.rex(), r2.rex());
+                        push_opcode!(&mut self.buffer, 0x0f, 0xaf);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Mov(op1, op2) => {
+                match (op1, op2) {
+                    // MOVQ
+                    (Ireg(r1), Ireg(r2)) => {
+                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        push_opcode!(&mut self.buffer, 0x89);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                    }
+                    // MOVDQA
+                    (Freg(r1), Freg(r2)) => {
+                        push_opcode!(&mut self.buffer, 0x66, 0x0f, 0x6f);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
+                    }
+                    (Ireg(r1), Iimm(i2)) => {
+                        push_prefix!(&mut self.buffer, 0, 0);
+                        push_opcode!(&mut self.buffer, 0xb8);
+                        push_immi64!(&mut self.buffer, i2);
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Cmp(op1, op2) => {
+                match (op1, op2) {
+                    (Ireg(r1), Ireg(r2)) => {
+                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        push_opcode!(&mut self.buffer, 0x39);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                    }
+                    //// MOVDQA
+                    //(Freg(r1), Freg(r2)) => {
+                        //push_opcode!(&mut self.buffer, 0x66, 0x0f, 0x6f);
+                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
+                    //}
+                    _ => unimplemented!(),
+                }
+            }
+            Push(op1) => {
+                match op1 {
+                    Ireg(r1) => {
+                        if r1.rex() == 1 { push_prefix!(&mut self.buffer, 0, 1); }
+                        push_opcode!(&mut self.buffer, 0x50 | r1.reg());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Pop(op1) => {
+                match op1 {
+                    Ireg(r1) => {
+                        if r1.rex() == 1 { push_prefix!(&mut self.buffer, 0, 1); }
+                        push_opcode!(&mut self.buffer, 0x58 | r1.reg());
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            SetLabel(l) => {
+                let offset = self.buffer.position() - 2;
+                self.labels.insert(l, offset);
+            }
+            Jmp(op1) => {
+                match op1 {
+                    Label(l) => {
+                        push_opcode!(&mut self.buffer, 0xeb, 0xff);
+                        let offset = self.buffer.position() - 1;
+                        self.mentions.push((l, offset));
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            _ => unimplemented!(),
+        }
+        Ok(())
     }
 }
 
