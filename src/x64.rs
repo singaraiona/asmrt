@@ -106,7 +106,7 @@ impl Assembler {
                     (Ireg(r1), Byte(b2)) => {
                         push_prefix!(&mut self.buffer, 0, r1.rex());
                         push_opcode!(&mut self.buffer, 0x83);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0b101, r1.reg());
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0x05, r1.reg());
                         push_immi8!(&mut self.buffer, b2 as u8);
                     }
                     _ => unimplemented!(),
@@ -195,7 +195,7 @@ impl Assembler {
                 match op1 {
                     Ireg(r1) => {
                         push_opcode!(&mut self.buffer, 0xff);
-                        push_immi8!(&mut self.buffer, MOD_ADDR_REG | 0x02);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0x02, r1.reg());
                     }
                     _ => unimplemented!(),
                 }
