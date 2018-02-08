@@ -121,3 +121,15 @@ test!(call_dyad;
     1, 2;
     3
 );
+
+test!(cmp;
+    Cmp(Ireg(RCX), Ireg(RDX)),
+    Jne(Lbl("lbl")),
+    Mov(Ireg(RAX), Qword(11)),
+    Ret,
+    SetLbl("lbl"),
+    Mov(Ireg(RAX), Qword(55));
+    DyadI64;
+    1, 2;
+    55
+);

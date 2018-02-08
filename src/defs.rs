@@ -68,6 +68,7 @@ pub enum Instruction {
     Mov(Operand, Operand),
     Cmp(Operand, Operand),
     Jmp(Operand),
+    Jne(Operand),
     Push(Operand),
     Pop(Operand),
     SetLbl(&'static str),

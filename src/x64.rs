@@ -8,7 +8,8 @@ use fnv::FnvHashMap;
 //
 const MMAP_INIT_SIZE: usize = 1024 * 256;
 //
-macro_rules! or          { ($e:expr)                                 => { $e.or_else(|_| Err(Error::Serialize))?   }}
+macro_rules! or          { ($e:expr)                                 => {
+                           { let _ = $e.or_else(|_| Err(Error::Serialize))?;                                      }}}
 macro_rules! push_prefix { ($w:expr, $op1:expr, $op2:expr)           => { or!($w.write(&[REX | $op1 << 2 | $op2])) }}
 macro_rules! push_opcode { ($w:expr, $($op:expr),+)                  => { or!($w.write(&[$($op),+]))               }}
 macro_rules! push_modreg { ($w:expr, $md:expr, $op1:expr, $op2:expr) => { or!($w.write(&[$md | $op1 << 3 | $op2])) }}
@@ -68,13 +69,18 @@ impl Assembler {
        Ok(())
     }
 
+    fn jump_near(&mut self, to: &'static str) -> Result<(), Error> {
+        let offset = self.buffer.position();
+        push_immi32!(&mut self.buffer, 0);
+        self.mentions.push((to, offset));
+        Ok(())
+    }
+
     fn serialize_instruction(&mut self, instr: Instruction) -> Result<(), Error> {
         use defs::Instruction::*;
         use defs::Operand::*;
         match instr {
-            Ret => {
-                push_opcode!(&mut self.buffer, 0xc3);
-            },
+            Ret => push_opcode!(&mut self.buffer, 0xc3),
             Add(op1, op2) => {
                 match (op1, op2) {
                     (Ireg(r1), Ireg(r2)) => {
@@ -137,7 +143,7 @@ impl Assembler {
                     }
                     (Ireg(r1), Qword(i2)) => {
                         push_prefix!(&mut self.buffer, 0, 0);
-                        push_opcode!(&mut self.buffer, 0xb8);
+                        push_opcode!(&mut self.buffer, 0xb8 | r1.reg());
                         push_immi64!(&mut self.buffer, i2);
                     }
                     _ => unimplemented!(),
@@ -146,15 +152,10 @@ impl Assembler {
             Cmp(op1, op2) => {
                 match (op1, op2) {
                     (Ireg(r1), Ireg(r2)) => {
-                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
-                        push_opcode!(&mut self.buffer, 0x39);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                        push_prefix!(&mut self.buffer, r1.rex(), r2.rex());
+                        push_opcode!(&mut self.buffer, 0x3b);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
                     }
-                    //// MOVDQA
-                    //(Freg(r1), Freg(r2)) => {
-                        //push_opcode!(&mut self.buffer, 0x66, 0x0f, 0x6f);
-                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
-                    //}
                     _ => unimplemented!(),
                 }
             }
@@ -184,9 +185,16 @@ impl Assembler {
                 match op1 {
                     Lbl(l) => {
                         push_opcode!(&mut self.buffer, 0xe9);
-                        let offset = self.buffer.position();
-                        push_immi32!(&mut self.buffer, 0);
-                        self.mentions.push((l, offset));
+                        self.jump_near(l)?;
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Jne(op1) => {
+                match op1 {
+                    Lbl(l) => {
+                        push_opcode!(&mut self.buffer, 0x0f, 0x85);
+                        self.jump_near(l)?;
                     }
                     _ => unimplemented!(),
                 }
