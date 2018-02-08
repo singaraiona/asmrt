@@ -31,7 +31,7 @@ pub struct Assembler {
     mentions: Vec<(&'static str, u64)>,      // set of labels mentioned inside buffer
     buffer:   Cursor<Vec<u8>>,               // executable code
 }
-
+//
 impl Assembler {
     pub fn new() -> Self {
         Assembler {
