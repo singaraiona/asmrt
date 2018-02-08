@@ -12,8 +12,10 @@ macro_rules! or          { ($e:expr)                                 => { $e.or_
 macro_rules! push_prefix { ($w:expr, $op1:expr, $op2:expr)           => { or!($w.write(&[REX | $op1 << 2 | $op2])) }}
 macro_rules! push_opcode { ($w:expr, $($op:expr),+)                  => { or!($w.write(&[$($op),+]))               }}
 macro_rules! push_modreg { ($w:expr, $md:expr, $op1:expr, $op2:expr) => { or!($w.write(&[$md | $op1 << 3 | $op2])) }}
-macro_rules! push_immi64 { ($w:expr, $im:expr)                       => {
-                            unsafe { or!($w.write(&mem::transmute::<i64, [u8;8]>($im))) }}}
+macro_rules! as_bytes    { ($t:tt, $v:expr)                          => { unsafe { &mem::transmute::<$t,[u8;mem::size_of::<$t>()]>($v) } }}
+macro_rules! push_immi16 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i16, $im))) }}
+macro_rules! push_immi32 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im))) }}
+macro_rules! push_immi64 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im))) }}
 //
 pub struct Ops(Mmap);
 
@@ -43,8 +45,8 @@ impl Assembler {
     pub fn push_instruction(&mut self, i: Instruction) -> Result<(), Error> { self.serialize_instruction(i) }
 
     pub fn commit(&mut self) -> Result<Ops, Error> {
-        //println!("{}", self.buffer_fmt());
         self.resolve_labels()?;
+        //println!("{}", self.buffer_fmt());
         //return Err(Error::UnknownLabel);
         let mut mm = Mmap::anonymous(MMAP_INIT_SIZE, Protection::ReadWrite).or_else(|_| Err(Error::MmapCreate))?;
         {
@@ -59,7 +61,7 @@ impl Assembler {
        for lbl in &self.mentions {
            let pos = self.labels.get(lbl.0).ok_or_else(|| Error::UnknownLabel)?;
            self.buffer.set_position(lbl.1);
-           push_opcode!(&mut self.buffer, (*pos as i64 - lbl.1 as i64) as u8);
+           push_immi32!(&mut self.buffer, *pos as i32 - lbl.1 as i32 - mem::size_of::<i32>() as i32);
        }
        Ok(())
     }
@@ -74,14 +76,10 @@ impl Assembler {
             Add(op1, op2) => {
                 match (op1, op2) {
                     (Ireg(r1), Ireg(r2)) => {
-                        let c_plus = |x: i64, y: i64| { x + y };
-                        self.buffer.write(&mem::transmute(c_plus));
+                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        push_opcode!(&mut self.buffer, 0x01);
+                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
                     }
-                    //(Ireg(r1), Ireg(r2)) => {
-                        //push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
-                        //push_opcode!(&mut self.buffer, 0x01);
-                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
-                    //}
                     // ADDSD
                     (Freg(r1), Freg(r2)) => {
                         push_opcode!(&mut self.buffer, 0xf2, 0x0f, 0x58);
@@ -165,14 +163,15 @@ impl Assembler {
                 }
             }
             SetLbl(l) => {
-                let offset = self.buffer.position() - 1;
+                let offset = self.buffer.position();
                 self.labels.insert(l, offset);
             }
             Jmp(op1) => {
                 match op1 {
                     Lbl(l) => {
-                        push_opcode!(&mut self.buffer, 0xeb, 0xff);
-                        let offset = self.buffer.position() - 1;
+                        push_opcode!(&mut self.buffer, 0xe9);
+                        let offset = self.buffer.position();
+                        push_immi32!(&mut self.buffer, 0);
                         self.mentions.push((l, offset));
                     }
                     _ => unimplemented!(),
