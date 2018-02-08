@@ -54,7 +54,7 @@ pub enum Operand {
     Freg(Freg),
     Iimm(i64),
     Fimm(f64),
-    Label(&'static str),
+    Lbl(&'static str),
     Mem,
 }
 //
@@ -67,7 +67,7 @@ pub enum Instruction {
     Jmp(Operand),
     Push(Operand),
     Pop(Operand),
-    SetLabel(&'static str),
+    SetLbl(&'static str),
     Ret,
 }
 //

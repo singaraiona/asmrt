@@ -43,8 +43,8 @@ impl Assembler {
     pub fn push_instruction(&mut self, i: Instruction) -> Result<(), Error> { self.serialize_instruction(i) }
 
     pub fn commit(&mut self) -> Result<Ops, Error> {
-        self.resolve_labels()?;
         //println!("{}", self.buffer_fmt());
+        self.resolve_labels()?;
         //return Err(Error::UnknownLabel);
         let mut mm = Mmap::anonymous(MMAP_INIT_SIZE, Protection::ReadWrite).or_else(|_| Err(Error::MmapCreate))?;
         {
@@ -59,7 +59,7 @@ impl Assembler {
        for lbl in &self.mentions {
            let pos = self.labels.get(lbl.0).ok_or_else(|| Error::UnknownLabel)?;
            self.buffer.set_position(lbl.1);
-           push_opcode!(&mut self.buffer, *pos as u8);
+           push_opcode!(&mut self.buffer, (*pos as i64 - lbl.1 as i64) as u8);
        }
        Ok(())
     }
@@ -160,13 +160,13 @@ impl Assembler {
                     _ => unimplemented!(),
                 }
             }
-            SetLabel(l) => {
-                let offset = self.buffer.position() - 2;
+            SetLbl(l) => {
+                let offset = self.buffer.position() - 1;
                 self.labels.insert(l, offset);
             }
             Jmp(op1) => {
                 match op1 {
-                    Label(l) => {
+                    Lbl(l) => {
                         push_opcode!(&mut self.buffer, 0xeb, 0xff);
                         let offset = self.buffer.position() - 1;
                         self.mentions.push((l, offset));

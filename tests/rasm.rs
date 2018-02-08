@@ -83,13 +83,29 @@ test!(mul_push_pop;
 );
 
 test!(jmp_label;
-    Jmp(Label("lbl")),
+    Jmp(Lbl("lbl")),
     Mov(Ireg(RAX), Iimm(9223372036854775801)),
     Add(Ireg(RAX), Ireg(RCX)),
     Ret,
-    SetLabel("lbl"),
+    SetLbl("lbl"),
     Mov(Ireg(RAX), Iimm(9));
     MonadI64;
     1;
     9
+);
+
+test!(jmp_label2;
+    Jmp(Lbl("lbl2")),
+    Mov(Ireg(RAX), Iimm(9223372036854775801)),
+    Add(Ireg(RAX), Ireg(RCX)),
+    SetLbl("lbl1"),
+    Mov(Ireg(RAX), Iimm(99)),
+    Add(Ireg(RAX), Ireg(RCX)),
+    Ret,
+    SetLbl("lbl2"),
+    Jmp(Lbl("lbl1")),
+    Mov(Ireg(RAX), Iimm(9));
+    MonadI64;
+    1;
+    100
 );
