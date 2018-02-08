@@ -52,8 +52,11 @@ impl Freg {
 pub enum Operand {
     Ireg(Ireg),
     Freg(Freg),
-    Iimm(i64),
-    Fimm(f64),
+    Byte(i8),
+    Word(i16),
+    Dword(i32),
+    Qword(i64),
+    Float(f64),
     Lbl(&'static str),
     Mem,
 }
@@ -68,7 +71,7 @@ pub enum Instruction {
     Push(Operand),
     Pop(Operand),
     SetLbl(&'static str),
-    Call(i64),
+    Call(Operand),
     Ret,
 }
 //

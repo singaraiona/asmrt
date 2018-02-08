@@ -41,7 +41,7 @@ test!(add_reg_reg_i64;
 );
 
 test!(add_reg_imm_i64;
-    Mov(Ireg(RAX), Iimm(9223372036854775801)),
+    Mov(Ireg(RAX), Qword(9223372036854775801)),
     Add(Ireg(RAX), Ireg(RCX));
     MonadI64;
     6;
@@ -84,11 +84,11 @@ test!(mul_push_pop;
 
 test!(jmp_label;
     Jmp(Lbl("lbl")),
-    Mov(Ireg(RAX), Iimm(9223372036854775801)),
+    Mov(Ireg(RAX), Qword(9223372036854775801)),
     Add(Ireg(RAX), Ireg(RCX)),
     Ret,
     SetLbl("lbl"),
-    Mov(Ireg(RAX), Iimm(9));
+    Mov(Ireg(RAX), Qword(9));
     MonadI64;
     1;
     9
@@ -96,16 +96,28 @@ test!(jmp_label;
 
 test!(jmp_label2;
     Jmp(Lbl("lbl2")),
-    Mov(Ireg(RAX), Iimm(9223372036854775801)),
+    Mov(Ireg(RAX), Qword(9223372036854775801)),
     Add(Ireg(RAX), Ireg(RCX)),
     SetLbl("lbl1"),
-    Mov(Ireg(RAX), Iimm(99)),
+    Mov(Ireg(RAX), Qword(99)),
     Add(Ireg(RAX), Ireg(RCX)),
     Ret,
     SetLbl("lbl2"),
     Jmp(Lbl("lbl1")),
-    Mov(Ireg(RAX), Iimm(9));
+    Mov(Ireg(RAX), Qword(9));
     MonadI64;
     1;
     100
+);
+
+extern "win64" fn f_add(x: i64, y: i64) -> i64 { x + y }
+
+test!(call_dyad;
+    Mov(Ireg(RAX), Qword(f_add as _)),
+    Sub(Ireg(RSP), Byte(0x28)),
+    Call(Ireg(RAX)),
+    Add(Ireg(RSP), Byte(0x28));
+    DyadI64;
+    1, 2;
+    3
 );
