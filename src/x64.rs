@@ -195,7 +195,7 @@ impl Assembler {
                 match op1 {
                     Ireg(r1) => {
                         push_opcode!(&mut self.buffer, 0xff);
-                        push_immi8!(&mut self.buffer, 0xd0 | r1.reg());
+                        push_immi8!(&mut self.buffer, MOD_ADDR_REG | 0x02);
                     }
                     _ => unimplemented!(),
                 }
