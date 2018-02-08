@@ -74,10 +74,14 @@ impl Assembler {
             Add(op1, op2) => {
                 match (op1, op2) {
                     (Ireg(r1), Ireg(r2)) => {
-                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
-                        push_opcode!(&mut self.buffer, 0x01);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                        let c_plus = |x: i64, y: i64| { x + y };
+                        self.buffer.write(&mem::transmute(c_plus));
                     }
+                    //(Ireg(r1), Ireg(r2)) => {
+                        //push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
+                        //push_opcode!(&mut self.buffer, 0x01);
+                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
+                    //}
                     // ADDSD
                     (Freg(r1), Freg(r2)) => {
                         push_opcode!(&mut self.buffer, 0xf2, 0x0f, 0x58);
