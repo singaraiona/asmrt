@@ -12,10 +12,12 @@ macro_rules! or          { ($e:expr)                                 => { $e.or_
 macro_rules! push_prefix { ($w:expr, $op1:expr, $op2:expr)           => { or!($w.write(&[REX | $op1 << 2 | $op2])) }}
 macro_rules! push_opcode { ($w:expr, $($op:expr),+)                  => { or!($w.write(&[$($op),+]))               }}
 macro_rules! push_modreg { ($w:expr, $md:expr, $op1:expr, $op2:expr) => { or!($w.write(&[$md | $op1 << 3 | $op2])) }}
-macro_rules! as_bytes    { ($t:tt, $v:expr)                          => { unsafe { &mem::transmute::<$t,[u8;mem::size_of::<$t>()]>($v) } }}
-macro_rules! push_immi16 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i16, $im))) }}
-macro_rules! push_immi32 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im))) }}
-macro_rules! push_immi64 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im))) }}
+macro_rules! as_bytes    { ($t:tt,   $v:expr)                        => {
+                            unsafe { &mem::transmute::<$t,[u8;mem::size_of::<$t>()]>($v) }                         }}
+macro_rules! push_imi8   { ($w:expr, $im:expr)                       => { or!($w.write(&[$im]))                    }}
+macro_rules! push_immi16 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i16, $im)))       }}
+macro_rules! push_immi32 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im)))       }}
+macro_rules! push_immi64 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im)))       }}
 //
 pub struct Ops(Mmap);
 
@@ -173,6 +175,15 @@ impl Assembler {
                         let offset = self.buffer.position();
                         push_immi32!(&mut self.buffer, 0);
                         self.mentions.push((l, offset));
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Call(op1) => {
+                match op1 {
+                    Ireg(r1) => {
+                        push_opcode!(&mut self.buffer, 0xff);
+                        //push_
                     }
                     _ => unimplemented!(),
                 }

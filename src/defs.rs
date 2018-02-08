@@ -68,6 +68,7 @@ pub enum Instruction {
     Push(Operand),
     Pop(Operand),
     SetLbl(&'static str),
+    Call(i64),
     Ret,
 }
 //
