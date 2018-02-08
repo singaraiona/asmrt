@@ -16,7 +16,7 @@ pub enum Error {
 }
 
 #[macro_use]
-pub mod defs;
+pub mod ops;
 #[macro_use]
 pub mod x64;
 

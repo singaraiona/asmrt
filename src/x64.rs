@@ -2,7 +2,7 @@ use memmap::{Mmap, Protection};
 use std::io::Cursor;
 use std::io::prelude::*;
 use std::mem;
-use defs::*;
+use ops::*;
 use Error;
 use fnv::FnvHashMap;
 //
@@ -15,14 +15,14 @@ macro_rules! push_opcode { ($w:expr, $($op:expr),+)                  => { or!($w
 macro_rules! push_modreg { ($w:expr, $md:expr, $op1:expr, $op2:expr) => { or!($w.write(&[$md | $op1 << 3 | $op2])) }}
 macro_rules! as_bytes    { ($t:tt,   $v:expr)                        => {
                             unsafe { &mem::transmute::<$t,[u8;mem::size_of::<$t>()]>($v) }                         }}
-macro_rules! push_immi8  { ($w:expr, $im:expr)                       => { or!($w.write(&[$im]))                    }}
-macro_rules! push_immi16 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i16, $im)))       }}
-macro_rules! push_immi32 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im)))       }}
-macro_rules! push_immi64 { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im)))       }}
+macro_rules! push_imm8   { ($w:expr, $im:expr)                       => { or!($w.write(&[$im]))                    }}
+macro_rules! push_imm16  { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i16, $im)))       }}
+macro_rules! push_imm32  { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im)))       }}
+macro_rules! push_imm64  { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im)))       }}
 //
-pub struct Ops(Mmap);
+pub struct Code(Mmap);
 
-impl Ops {
+impl Code {
     pub fn ptr(&self) -> *const u8 { self.0.ptr() }
 }
 //
@@ -47,7 +47,7 @@ impl Assembler {
 
     pub fn push_instruction(&mut self, i: Instruction) -> Result<(), Error> { self.serialize_instruction(i) }
 
-    pub fn commit(&mut self) -> Result<Ops, Error> {
+    pub fn commit(&mut self) -> Result<Code, Error> {
         self.resolve_labels()?;
         //println!("{}", self.buffer_fmt());
         //return Err(Error::UnknownLabel);
@@ -57,28 +57,28 @@ impl Assembler {
             for (i, v) in self.buffer.get_ref().iter().enumerate() { buf[i] = *v; }
         }
         mm.set_protection(Protection::ReadExecute).or_else(|_| Err(Error::MmapSetMode))?;
-        Ok(Ops(mm))
+        Ok(Code(mm))
     }
 
     fn resolve_labels(&mut self) -> Result<(), Error> {
        for lbl in &self.mentions {
            let pos = self.labels.get(lbl.0).ok_or_else(|| Error::UnknownLabel)?;
            self.buffer.set_position(lbl.1);
-           push_immi32!(&mut self.buffer, *pos as i32 - lbl.1 as i32 - mem::size_of::<i32>() as i32);
+           push_imm32!(&mut self.buffer, *pos as i32 - lbl.1 as i32 - mem::size_of::<i32>() as i32);
        }
        Ok(())
     }
 
     fn jump_near(&mut self, to: &'static str) -> Result<(), Error> {
         let offset = self.buffer.position();
-        push_immi32!(&mut self.buffer, 0);
+        push_imm32!(&mut self.buffer, 0);
         self.mentions.push((to, offset));
         Ok(())
     }
 
     fn serialize_instruction(&mut self, instr: Instruction) -> Result<(), Error> {
-        use defs::Instruction::*;
-        use defs::Operand::*;
+        use ops::Instruction::*;
+        use ops::Operand::*;
         match instr {
             Ret => push_opcode!(&mut self.buffer, 0xc3),
             Add(op1, op2) => {
@@ -97,7 +97,7 @@ impl Assembler {
                         push_prefix!(&mut self.buffer, 0, r1.rex());
                         push_opcode!(&mut self.buffer, 0x83);
                         push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0, r1.reg());
-                        push_immi8!(&mut self.buffer, b2 as u8);
+                        push_imm8!(&mut self.buffer, b2 as u8);
                     }
                     _ => unimplemented!(),
                 }
@@ -113,7 +113,7 @@ impl Assembler {
                         push_prefix!(&mut self.buffer, 0, r1.rex());
                         push_opcode!(&mut self.buffer, 0x83);
                         push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0x05, r1.reg());
-                        push_immi8!(&mut self.buffer, b2 as u8);
+                        push_imm8!(&mut self.buffer, b2 as u8);
                     }
                     _ => unimplemented!(),
                 }
@@ -144,7 +144,7 @@ impl Assembler {
                     (Ireg(r1), Qword(i2)) => {
                         push_prefix!(&mut self.buffer, 0, 0);
                         push_opcode!(&mut self.buffer, 0xb8 | r1.reg());
-                        push_immi64!(&mut self.buffer, i2);
+                        push_imm64!(&mut self.buffer, i2);
                     }
                     _ => unimplemented!(),
                 }

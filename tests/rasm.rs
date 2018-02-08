@@ -4,7 +4,7 @@ extern crate test;
 extern crate rasm;
 
 use rasm::x64::Assembler;
-use rasm::defs::{Instruction, Operand, Ireg, Freg};
+use rasm::ops::{Instruction, Operand, Ireg, Freg};
 
 type MonadI64 = extern "win64" fn(i64)      -> i64;
 type DyadI64  = extern "win64" fn(i64, i64) -> i64;
