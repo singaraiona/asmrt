@@ -20,6 +20,30 @@ macro_rules! push_imm16  { ($w:expr, $im:expr)                       => { or!($w
 macro_rules! push_imm32  { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i32, $im)))       }}
 macro_rules! push_imm64  { ($w:expr, $im:expr)                       => { or!($w.write(as_bytes!(i64, $im)))       }}
 //
+macro_rules! op {
+    ($w:expr, $($b:expr),+) => {
+        or!($w.write(&[$($b),+]))
+    };
+    // OP
+    ($w:expr, $($oc:expr),+, /r $op1:tt $op2:tt $($e:expr),*) => {
+        or!($w.write(&[$($oc),+, MOD_ADDR_REG | ($op1 as u8 % 8) << 3 | ($op2 as u8 % 8), $($e),*]))
+    };
+    // OP + pi
+    ($w:expr, $oc:expr, +$pi:tt, /r $op1:tt $op2:tt $($e:expr),*) => {
+        or!($w.write(&[$($oc),+, MOD_ADDR_REG | ($op1 as u8 % 8) << 3 | ($op2 as u8 % 8), $($e),*]))
+    };
+    // REX + OP
+    ($w:expr, $p:expr, $($oc:expr),+, /r $op1:tt $op2:tt $($e:expr),*) => {
+        or!($w.write($p | ($op1 as u8 / 8) << 2 | ($op2 as u8 / 8)));
+        op!($w, $($oc),+, /r $op1 $op2 $($e),*)
+    };
+    // REX + OP + pi
+    ($w:expr, $p:expr, $oc:expr, +$pi:tt, /r $op1:tt $op2:tt $($e:expr),*) => {
+        or!($w.write($p | ($op1 as u8 / 8) << 2 | ($op2 as u8 / 8)));
+        op!($w, $oc | $pi as u8, /r $op1 $op2 $($e),*)
+    }
+}
+//
 pub struct Code(Mmap);
 
 impl Code {
@@ -83,21 +107,14 @@ impl Assembler {
             Ret => push_opcode!(&mut self.buffer, 0xc3),
             Add(op1, op2) => {
                 match (op1, op2) {
-                    (Ireg(r1), Ireg(r2)) => {
-                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
-                        push_opcode!(&mut self.buffer, 0x01);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
-                    }
-                    // ADDSD
-                    (Freg(r1), Freg(r2)) => {
-                        push_opcode!(&mut self.buffer, 0xf2, 0x0f, 0x58);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
-                    }
+                    (Ireg(r1), Ireg(r2)) => op!(&mut self.buffer, REX, 0x01, /r r2 r1),
+                    (Freg(r1), Freg(r2)) => op!(&mut self.buffer, 0xf2, 0x0f, 0x58, /r r1 r2),
                     (Ireg(r1), Byte(b2)) => {
-                        push_prefix!(&mut self.buffer, 0, r1.rex());
-                        push_opcode!(&mut self.buffer, 0x83);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0, r1.reg());
-                        push_imm8!(&mut self.buffer, b2 as u8);
+                        op!(&mut self.buffer, REX, 0x83, /r 0 r1 b2 as u8);
+                        //push_prefix!(&mut self.buffer, 0, r1.rex());
+                        //push_opcode!(&mut self.buffer, 0x83);
+                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, 0, r1.reg());
+                        //push_imm8!(&mut self.buffer, b2 as u8);
                     }
                     _ => unimplemented!(),
                 }
@@ -130,21 +147,13 @@ impl Assembler {
             }
             Mov(op1, op2) => {
                 match (op1, op2) {
-                    // MOVQ
-                    (Ireg(r1), Ireg(r2)) => {
-                        push_prefix!(&mut self.buffer, r2.rex(), r1.rex());
-                        push_opcode!(&mut self.buffer, 0x89);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r2.reg(), r1.reg());
-                    }
-                    // MOVDQA
-                    (Freg(r1), Freg(r2)) => {
-                        push_opcode!(&mut self.buffer, 0x66, 0x0f, 0x6f);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
-                    }
+                    (Ireg(r1), Ireg(r2)) => op!(&mut self.buffer, REX, 0x89, /r r2 r1),
+                    (Freg(r1), Freg(r2)) => op!(&mut self.buffer, REX, 0x66, 0x0f, 0x6f, /r r1 r2),
                     (Ireg(r1), Qword(i2)) => {
-                        push_prefix!(&mut self.buffer, 0, 0);
-                        push_opcode!(&mut self.buffer, 0xb8 | r1.reg());
-                        push_imm64!(&mut self.buffer, i2);
+                        op!(&mut self.buffer, REX, 0xb8 + r1, i2);
+                        //push_prefix!(&mut self.buffer, 0, 0);
+                        //push_opcode!(&mut self.buffer, 0xb8 | r1.reg());
+                        //push_imm64!(&mut self.buffer, i2);
                     }
                     _ => unimplemented!(),
                 }
@@ -152,9 +161,10 @@ impl Assembler {
             Cmp(op1, op2) => {
                 match (op1, op2) {
                     (Ireg(r1), Ireg(r2)) => {
-                        push_prefix!(&mut self.buffer, r1.rex(), r2.rex());
-                        push_opcode!(&mut self.buffer, 0x3b);
-                        push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
+                        op!(&mut self.buffer, REX, 0x3b, /r r1 r2);
+                        //push_prefix!(&mut self.buffer, r1.rex(), r2.rex());
+                        //push_opcode!(&mut self.buffer, 0x3b);
+                        //push_modreg!(&mut self.buffer, MOD_ADDR_REG, r1.reg(), r2.reg());
                     }
                     _ => unimplemented!(),
                 }
@@ -162,8 +172,9 @@ impl Assembler {
             Push(op1) => {
                 match op1 {
                     Ireg(r1) => {
-                        if r1.rex() == 1 { push_prefix!(&mut self.buffer, 0, 1); }
-                        push_opcode!(&mut self.buffer, 0x50 | r1.reg());
+                        op!(&mut self.buffer, REX, 0x50 +r1.reg());
+                        //if r1.rex() == 1 { push_prefix!(&mut self.buffer, 0, 1); }
+                        //push_opcode!(&mut self.buffer, 0x50 | r1.reg());
                     }
                     _ => unimplemented!(),
                 }

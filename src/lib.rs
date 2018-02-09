@@ -1,4 +1,5 @@
-#![feature(unique)]
+#![feature(plugin)]
+#![plugin(encode)]
 
 extern crate core;
 extern crate memmap;

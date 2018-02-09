@@ -1,9 +1,10 @@
 [package]
-name = "asmrt"
+name = "encode"
 version = "0.1.0"
 authors = ["Anton <singaraiona@gmail.com>"]
 
+[lib]
+name = "encode"
+plugin = true
+
 [dependencies]
-encode = { path = "encode" }
-memmap = "^0.5.2"
-fnv = "*"

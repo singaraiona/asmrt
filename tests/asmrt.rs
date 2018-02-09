@@ -1,10 +1,10 @@
 #![feature(test)]
 extern crate test;
 #[macro_use]
-extern crate rasm;
+extern crate asmrt;
 
-use rasm::x64::Assembler;
-use rasm::ops::{Instruction, Operand, Ireg, Freg};
+use asmrt::x64::Assembler;
+use asmrt::ops::{Instruction, Operand, Ireg, Freg};
 
 type MonadI64 = extern "win64" fn(i64)      -> i64;
 type DyadI64  = extern "win64" fn(i64, i64) -> i64;
